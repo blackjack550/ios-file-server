@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>iOS 文件接收服务器</title>
+<style>
+  body { font-family: -apple-system, "Segoe UI", sans-serif; max-width: 900px; margin: 24px auto; padding: 0 16px; color: #222; }
+  h1 { font-size: 22px; }
+  .card { background: #f6f7f9; border-radius: 10px; padding: 14px 16px; margin: 14px 0; }
+  code { background: #e8eaee; padding: 2px 6px; border-radius: 4px; font-size: 14px; }
+  input[type=file] { margin: 8px 0; }
+  button { background: #0a84ff; color: #fff; border: 0; border-radius: 8px; padding: 10px 18px; font-size: 15px; cursor: pointer; }
+  .meta { color: #888; font-size: 13px; }
+  a { color: #0a84ff; text-decoration: none; }
+  #msg { margin-top: 8px; font-weight: 600; }
+
+  /* 文件网格 */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; margin-top: 10px; }
+  .item { background: #fff; border: 1px solid #e3e5e9; border-radius: 10px; overflow: hidden; }
+  .thumb { width: 100%; height: 120px; object-fit: cover; display: block; background: #111; cursor: zoom-in; }
+  .nothumb { width: 100%; height: 120px; display: flex; align-items: center; justify-content: center; font-size: 34px; background: #111; cursor: pointer; }
+  .info { padding: 8px 10px; }
+  .fname { font-size: 13px; word-break: break-all; margin-bottom: 4px; }
+  .ops { margin-top: 6px; font-size: 13px; display: flex; gap: 12px; }
+  .ops .del { color: #ff3b30; cursor: pointer; margin-left: auto; }
+
+  /* 灯箱 */
+  #viewer { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.88); z-index: 99;
+            align-items: center; justify-content: center; flex-direction: column; }
+  #viewer.show { display: flex; }
+  #stage { max-width: 92vw; max-height: 82vh; display: flex; align-items: center; justify-content: center; }
+  #stage img, #stage video { max-width: 92vw; max-height: 82vh; border-radius: 6px; }
+  #vbar { color: #ddd; margin-top: 12px; font-size: 14px; display: flex; gap: 16px; align-items: center; }
+  #vbar .name { word-break: break-all; }
+  #vbar a { color: #7cb8ff; }
+  #vclose { position: absolute; top: 14px; right: 20px; font-size: 30px; color: #fff; cursor: pointer; background: none; padding: 4px 12px; }
+</style>
+</head>
+<body>
+<h1>📱 iOS 文件接收服务器</h1>
+
+<div class="card">
+  <b>上传接口（供 iOS 快捷指令 / App 使用）</b><br><br>
+  {% for ip in ips %}
+    POST 地址：<code>http://{{ ip }}:{{ port }}/upload</code><br>
+  {% endfor %}
+  <span class="meta">支持 multipart/form-data 表单上传，也支持原始 body（Header 加 X-Filename 指定文件名）。最大 {{ max_mb }} MB。</span>
+</div>
+
+<div class="card">
+  <b>网页上传测试</b><br>
+  <input type="file" id="file" multiple>
+  <button onclick="upload()">上传</button>
+  <div id="msg"></div>
+</div>
+
+<div class="card">
+  <b>已接收文件（{{ files|length }}）</b>
+  {% if files %}
+  <div class="grid">
+    {% for f in files %}
+    <div class="item" id="item-{{ loop.index }}">
+      {% set url = f.name | urlencode %}
+      {% if f.kind == 'image' %}
+        <img class="thumb" loading="lazy" src="/preview/{{ url }}" alt="{{ f.name }}"
+             onclick="openViewer('image','{{ url }}','{{ f.name }}')"
+             onerror="this.outerHTML='<div class=&quot;nothumb&quot; onclick=&quot;openViewer(\'other\',\'{{ url }}\',\'{{ f.name }}\')&quot;>🖼️</div>'">
+      {% elif f.kind == 'video' %}
+        <video class="thumb" src="/preview/{{ url }}" preload="metadata" muted playsinline
+               onclick="openViewer('video','{{ url }}','{{ f.name }}')"></video>
+      {% else %}
+        <div class="nothumb" onclick="openViewer('other','{{ url }}','{{ f.name }}')">📄</div>
+      {% endif %}
+      <div class="info">
+        <div class="fname">{{ f.name }}</div>
+        <div class="meta">{{ '%.1f' % (f.size / 1024 / 1024) }} MB · {{ f.time }}</div>
+        <div class="ops">
+          <a href="/files/{{ url }}" download>下载</a>
+          <span class="del" onclick="delFile('{{ f.name }}', '{{ loop.index }}')">删除</span>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="meta">暂无文件，等待 iOS 上传…</p>
+  {% endif %}
+</div>
+
+<div id="viewer" onclick="if(event.target===this)closeViewer()">
+  <button id="vclose" onclick="closeViewer()">×</button>
+  <div id="stage"></div>
+  <div id="vbar">
+    <span class="name" id="vname"></span>
+    <a id="vdl" href="#" download>下载</a>
+  </div>
+</div>
+
+<script>
+async function upload() {
+  const input = document.getElementById('file');
+  const msg = document.getElementById('msg');
+  if (!input.files.length) { msg.textContent = '请先选择文件'; return; }
+  const fd = new FormData();
+  for (const f of input.files) fd.append(f.name, f);
+  msg.textContent = '上传中…';
+  try {
+    const res = await fetch('/upload', { method: 'POST', body: fd });
+    const data = await res.json();
+    msg.textContent = data.ok ? '✅ 上传成功: ' + data.saved.join(', ') : '❌ ' + data.error;
+    if (data.ok) setTimeout(() => location.reload(), 800);
+  } catch (e) {
+    msg.textContent = '❌ 上传失败: ' + e;
+  }
+}
+
+function openViewer(kind, encodedUrl, name) {
+  const stage = document.getElementById('stage');
+  const url = '/preview/' + encodedUrl;
+  if (kind === 'image') stage.innerHTML = '<img src="' + url + '">';
+  else if (kind === 'video') stage.innerHTML = '<video src="' + url + '" controls autoplay playsinline></video>';
+  else stage.innerHTML = '<div style="color:#ccc;font-size:40px">📄</div>';
+  document.getElementById('vname').textContent = name;
+  document.getElementById('vdl').href = '/files/' + encodedUrl;
+  document.getElementById('viewer').classList.add('show');
+}
+
+function closeViewer() {
+  document.getElementById('stage').innerHTML = '';   // 停止视频播放
+  document.getElementById('viewer').classList.remove('show');
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeViewer(); });
+
+async function delFile(name, idx) {
+  if (!confirm('删除 ' + name + '？')) return;
+  const res = await fetch('/files/' + encodeURIComponent(name), { method: 'DELETE' });
+  const data = await res.json();
+  if (data.ok) {
+    const el = document.getElementById('item-' + idx);
+    if (el) el.remove();
+  } else {
+    alert('删除失败');
+  }
+}
+</script>
+</body>
+</html>

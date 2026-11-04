@@ -1,0 +1,9 @@
+# 接收到的文件不入库
+uploads/*
+!uploads/.gitkeep
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
