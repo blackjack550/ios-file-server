@@ -17,23 +17,34 @@
 
 ## 环境要求
 
-- Python 3.10+（已装 Flask 即可跳过下一步）
+只需安装 **Python 3.10+**（安装时勾选 "Add Python to PATH"，[下载地址](https://www.python.org/downloads/)）。
 
-```powershell
-pip install -r requirements.txt
-```
+**Flask 等依赖无需手动安装**——启动脚本首次运行时会自动检测并安装。
 
 ## 如何运行
 
-方式一：双击项目根目录里的「启动服务.bat」（推荐，首次运行会自动检查 Python 环境并安装依赖）
+### 方式一：双击「启动服务.bat」（推荐，零配置）
 
-方式二：命令行
+双击项目根目录里的 `启动服务.bat`，脚本会自动完成全部部署工作：
+
+| 步骤 | 脚本自动做的事 |
+|---|---|
+| 1 | 检查 Python 环境，缺失时提示并给出下载地址 |
+| 2 | 检查 Flask 依赖，首次运行自动执行 `pip install -r requirements.txt` |
+| 3 | 启动服务器，显示 iOS 上传地址（关闭黑色窗口即停止服务） |
+
+也就是说：**下载项目 → 装好 Python → 双击 bat，三步就能跑起来。**
+
+### 方式二：命令行手动运行
 
 ```powershell
+pip install -r requirements.txt
 python app.py
 ```
 
-方式三：双击桌面上的「ios传输专用.bat」批处理（关闭黑色窗口即停止服务）。
+### 方式三：桌面快捷批处理
+
+双击桌面上的「ios传输专用.bat」，效果与方式一相同。
 
 启动后控制台会显示本机局域网 IP，例如：
 
