@@ -1,6 +1,5 @@
-# 接收到的文件不入库
-uploads/*
-!uploads/.gitkeep
+# 接收到的文件不入库（整个 uploads 目录内容均忽略）
+uploads/
 
 # Python
 __pycache__/
